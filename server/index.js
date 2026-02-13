@@ -30,6 +30,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('[Server] Unhandled error:', err.message, err.stack);
+  res.status(500).json({ error: err.message || 'Internal Server Error' });
+});
+
 // WebSocket server for terminal
 const wss = new WebSocketServer({ noServer: true });
 
