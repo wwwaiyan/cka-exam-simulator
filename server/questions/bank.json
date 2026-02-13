@@ -1,0 +1,1198 @@
+[
+  {
+    "id": "q01-schedule-pod-master",
+    "title": "Schedule Pod on Master Node",
+    "domain": "cluster-architecture",
+    "difficulty": "medium",
+    "points": 7,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a Pod named `pod1` in the `default` namespace using image `httpd:2.4.41-alpine`.\n\n- Container name: `pod1-container`\n- The Pod must **only** run on a control-plane/master node (do not add new labels to the node).\n- You will need to use both a **toleration** and a **nodeSelector**.\n\n**Hint:** Check the taints and labels on the control-plane node with `kubectl describe node`.",
+    "hints": [
+      "Use kubectl describe node to find taints and labels on the master node",
+      "You need a toleration for the NoSchedule taint on the control-plane",
+      "Use nodeSelector to target the control-plane node label"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod pod1 -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "pod1",
+        "check": "equals",
+        "description": "Pod 'pod1' exists in default namespace",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod pod1 -o jsonpath='{.spec.containers[0].name}' 2>/dev/null",
+        "expected": "pod1-container",
+        "check": "equals",
+        "description": "Container name is 'pod1-container'",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod pod1 -o jsonpath='{.spec.containers[0].image}' 2>/dev/null",
+        "expected": "httpd:2.4.41-alpine",
+        "check": "equals",
+        "description": "Image is httpd:2.4.41-alpine",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod pod1 -o jsonpath='{.spec.tolerations[*].key}' 2>/dev/null",
+        "expected": "node-role.kubernetes.io",
+        "check": "contains",
+        "description": "Pod has toleration for control-plane taint",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pod pod1 -o jsonpath='{.spec.nodeSelector}' 2>/dev/null",
+        "expected": "node-role.kubernetes.io",
+        "check": "contains",
+        "description": "Pod has nodeSelector targeting control-plane",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q02-pv-pvc-deployment",
+    "title": "Storage: PV, PVC, and Deployment",
+    "domain": "storage",
+    "difficulty": "medium",
+    "points": 8,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create the following storage resources:\n\n1. **PersistentVolume** named `safari-pv`:\n   - Capacity: `2Gi`\n   - Access mode: `ReadWriteOnce`\n   - hostPath: `/Volumes/Data`\n   - No storageClassName\n\n2. **PersistentVolumeClaim** named `safari-pvc` in namespace `production`:\n   - Request: `2Gi`\n   - Access mode: `ReadWriteOnce`\n   - No storageClassName\n\n3. **Deployment** named `safari` in namespace `production`:\n   - Image: `httpd:2.4.41-alpine`\n   - Mount the PVC at `/tmp/safari-data`",
+    "hints": [
+      "Set storageClassName to '' (empty string) on both PV and PVC to avoid default class",
+      "PV is cluster-scoped, PVC is namespace-scoped",
+      "If PVC stays Pending, check that size and access modes match"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pv safari-pv -o jsonpath='{.spec.capacity.storage}' 2>/dev/null",
+        "expected": "2Gi",
+        "check": "equals",
+        "description": "PV 'safari-pv' exists with 2Gi capacity",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pv safari-pv -o jsonpath='{.spec.accessModes[0]}' 2>/dev/null",
+        "expected": "ReadWriteOnce",
+        "check": "equals",
+        "description": "PV access mode is ReadWriteOnce",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pv safari-pv -o jsonpath='{.spec.hostPath.path}' 2>/dev/null",
+        "expected": "/Volumes/Data",
+        "check": "equals",
+        "description": "PV hostPath is /Volumes/Data",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pvc safari-pvc -n production -o jsonpath='{.spec.resources.requests.storage}' 2>/dev/null",
+        "expected": "2Gi",
+        "check": "equals",
+        "description": "PVC 'safari-pvc' requests 2Gi in production",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pvc safari-pvc -n production -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Bound",
+        "check": "equals",
+        "description": "PVC is Bound to the PV",
+        "points": 2
+      },
+      {
+        "command": "kubectl get deployment safari -n production -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null",
+        "expected": "httpd:2.4.41-alpine",
+        "check": "equals",
+        "description": "Deployment 'safari' uses httpd:2.4.41-alpine",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment safari -n production -o jsonpath='{.spec.template.spec.containers[0].volumeMounts[0].mountPath}' 2>/dev/null",
+        "expected": "/tmp/safari-data",
+        "check": "equals",
+        "description": "Volume mounted at /tmp/safari-data",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q03-rbac-sa-role",
+    "title": "RBAC: ServiceAccount, Role, RoleBinding",
+    "domain": "cluster-architecture",
+    "difficulty": "medium",
+    "points": 7,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "In namespace `development`:\n\n1. Create a **ServiceAccount** named `processor`\n2. Create a **Role** named `processor` that allows only the `create` verb on **Secrets** and **ConfigMaps**\n3. Create a **RoleBinding** named `processor` that binds the Role to the ServiceAccount\n\nVerify with: `kubectl auth can-i create secret --as system:serviceaccount:development:processor -n development`",
+    "hints": [
+      "kubectl create sa, kubectl create role, kubectl create rolebinding",
+      "Use --resource=secrets --resource=configmaps for multiple resources",
+      "Mind pluralization: 'secrets' not 'secret'"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get sa processor -n development -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "processor",
+        "check": "equals",
+        "description": "ServiceAccount 'processor' exists in development",
+        "points": 1
+      },
+      {
+        "command": "kubectl get role processor -n development -o jsonpath='{.rules[0].verbs}' 2>/dev/null",
+        "expected": "create",
+        "check": "contains",
+        "description": "Role allows 'create' verb",
+        "points": 2
+      },
+      {
+        "command": "kubectl get role processor -n development -o jsonpath='{.rules[0].resources}' 2>/dev/null",
+        "expected": "secrets",
+        "check": "contains",
+        "description": "Role applies to secrets",
+        "points": 1
+      },
+      {
+        "command": "kubectl auth can-i create secret --as system:serviceaccount:development:processor -n development 2>/dev/null",
+        "expected": "yes",
+        "check": "equals",
+        "description": "ServiceAccount can create secrets",
+        "points": 1
+      },
+      {
+        "command": "kubectl auth can-i create configmap --as system:serviceaccount:development:processor -n development 2>/dev/null",
+        "expected": "yes",
+        "check": "equals",
+        "description": "ServiceAccount can create configmaps",
+        "points": 1
+      },
+      {
+        "command": "kubectl auth can-i delete secret --as system:serviceaccount:development:processor -n development 2>/dev/null",
+        "expected": "no",
+        "check": "equals",
+        "description": "ServiceAccount cannot delete secrets (least privilege)",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q04-daemonset-all-nodes",
+    "title": "DaemonSet on All Nodes Including Master",
+    "domain": "workloads",
+    "difficulty": "medium",
+    "points": 7,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a **DaemonSet** named `ds-important` in namespace `staging`:\n\n- Image: `httpd:2.4-alpine`\n- Labels on DaemonSet and Pod template: `id=ds-important`\n- Resource requests: `cpu: 10m`, `memory: 10Mi`\n- Must run on **all nodes**, including control-plane/master nodes\n\nVerify that Pods are running on every node.",
+    "hints": [
+      "DaemonSets don't have a replicas field",
+      "Add a toleration for the control-plane NoSchedule taint",
+      "Use kubectl get pods -o wide to verify node placement"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "ds-important",
+        "check": "equals",
+        "description": "DaemonSet 'ds-important' exists in staging",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null",
+        "expected": "httpd:2.4-alpine",
+        "check": "equals",
+        "description": "Image is httpd:2.4-alpine",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.spec.template.metadata.labels.id}' 2>/dev/null",
+        "expected": "ds-important",
+        "check": "equals",
+        "description": "Pod template has label id=ds-important",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}' 2>/dev/null",
+        "expected": "10m",
+        "check": "equals",
+        "description": "CPU request is 10m",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.spec.template.spec.tolerations}' 2>/dev/null",
+        "expected": "node-role.kubernetes.io",
+        "check": "contains",
+        "description": "Has toleration for control-plane taint",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ds ds-important -n staging -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "DaemonSet has pods scheduled on nodes",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q05-deploy-antiaffinity",
+    "title": "Deployment with Pod Anti-Affinity",
+    "domain": "workloads",
+    "difficulty": "hard",
+    "points": 8,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a **Deployment** named `deploy-important` in namespace `staging`:\n\n- Label: `id=very-important`\n- Replicas: **3**\n- Two containers per Pod:\n  - `container1`: image `nginx:1.17.6-alpine`\n  - `container2`: image `busybox:1.31.1` with command `[\"sh\", \"-c\", \"sleep 1d\"]`\n- Use **podAntiAffinity** or **topologySpreadConstraints** to ensure a **maximum of one Pod per node**\n\nWith 2 worker nodes, you should see 2 Running and 1 Pending.",
+    "hints": [
+      "Use requiredDuringSchedulingIgnoredDuringExecution with topologyKey: kubernetes.io/hostname",
+      "Both containers must be in the same pod spec",
+      "1 Pending pod is expected — that proves anti-affinity works"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get deployment deploy-important -n staging -o jsonpath='{.spec.replicas}' 2>/dev/null",
+        "expected": "3",
+        "check": "equals",
+        "description": "Deployment has 3 replicas",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment deploy-important -n staging -o jsonpath='{.spec.template.spec.containers[*].name}' 2>/dev/null",
+        "expected": "container1",
+        "check": "contains",
+        "description": "Has container named 'container1'",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment deploy-important -n staging -o jsonpath='{.spec.template.spec.containers[*].name}' 2>/dev/null",
+        "expected": "container2",
+        "check": "contains",
+        "description": "Has container named 'container2'",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment deploy-important -n staging -o jsonpath='{.spec.template.metadata.labels.id}' 2>/dev/null",
+        "expected": "very-important",
+        "check": "equals",
+        "description": "Pod label is id=very-important",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment deploy-important -n staging -o json 2>/dev/null | grep -c 'topologyKey\\|podAntiAffinity\\|topologySpreadConstraints'",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "Anti-affinity or topology spread constraint is configured",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pods -n staging -l id=very-important --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l",
+        "expected": "1",
+        "check": "greater-than",
+        "description": "At least 2 pods are Running (anti-affinity working)",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q06-multi-container-shared-vol",
+    "title": "Multi-Container Pod with Shared Volume",
+    "domain": "workloads",
+    "difficulty": "medium",
+    "points": 8,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a Pod named `multi-container-playground` in the `default` namespace with three containers sharing a non-persistent volume:\n\n- **c1**: image `nginx:1.17.6-alpine`, env var `MY_NODE_NAME` set to the node name (use downward API `fieldRef: spec.nodeName`)\n- **c2**: image `busybox:1.31.1`, command: write `date` every second to `/vol/date.log`\n- **c3**: image `busybox:1.31.1`, command: `tail -f /vol/date.log`\n\nAll three containers must mount the shared volume at `/vol`. Verify logs appear in c3.",
+    "hints": [
+      "Use emptyDir: {} for the shared non-persistent volume",
+      "c2 command: sh -c 'while true; do date >> /vol/date.log; sleep 1; done'",
+      "Use fieldRef with fieldPath: spec.nodeName for the env var"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod multi-container-playground -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "multi-container-playground",
+        "check": "equals",
+        "description": "Pod exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod multi-container-playground -o jsonpath='{.spec.containers[*].name}' 2>/dev/null",
+        "expected": "c1",
+        "check": "contains",
+        "description": "Container c1 exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod multi-container-playground -o jsonpath='{.spec.containers[*].name}' 2>/dev/null",
+        "expected": "c2",
+        "check": "contains",
+        "description": "Container c2 exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod multi-container-playground -o jsonpath='{.spec.containers[*].name}' 2>/dev/null",
+        "expected": "c3",
+        "check": "contains",
+        "description": "Container c3 exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod multi-container-playground -o jsonpath='{.spec.volumes[0].emptyDir}' 2>/dev/null",
+        "expected": "{}",
+        "check": "equals",
+        "description": "Uses emptyDir volume",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pod multi-container-playground -o json 2>/dev/null | grep -c 'spec.nodeName'",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "MY_NODE_NAME uses downward API",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q07-secrets-mount-env",
+    "title": "Secrets: Volume Mount and Env Vars",
+    "domain": "workloads",
+    "difficulty": "medium",
+    "points": 8,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "In namespace `security`:\n\n1. Create a **Secret** named `secret2` with keys: `user=user1` and `pass=1234`\n2. Create a Pod named `secret-pod` with image `busybox:1.31.1` and command `sleep 1d`\n3. Inject `secret2` as environment variables:\n   - `APP_USER` from key `user`\n   - `APP_PASS` from key `pass`\n4. Also mount `secret2` as a volume at `/tmp/secret2` (read-only)",
+    "hints": [
+      "kubectl create secret generic secret2 --from-literal=user=user1 --from-literal=pass=1234",
+      "Use secretKeyRef for env vars and secret volume type for mounting",
+      "Add readOnly: true to the volumeMount"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get secret secret2 -n security -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "secret2",
+        "check": "equals",
+        "description": "Secret 'secret2' exists in security namespace",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod secret-pod -n security -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "secret-pod",
+        "check": "equals",
+        "description": "Pod 'secret-pod' exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod secret-pod -n security -o jsonpath='{.spec.containers[0].image}' 2>/dev/null",
+        "expected": "busybox:1.31.1",
+        "check": "equals",
+        "description": "Pod uses busybox:1.31.1",
+        "points": 1
+      },
+      {
+        "command": "kubectl exec secret-pod -n security -- env 2>/dev/null | grep APP_USER",
+        "expected": "APP_USER=user1",
+        "check": "contains",
+        "description": "APP_USER env var is set to user1",
+        "points": 2
+      },
+      {
+        "command": "kubectl exec secret-pod -n security -- env 2>/dev/null | grep APP_PASS",
+        "expected": "APP_PASS=1234",
+        "check": "contains",
+        "description": "APP_PASS env var is set to 1234",
+        "points": 1
+      },
+      {
+        "command": "kubectl exec secret-pod -n security -- ls /tmp/secret2 2>/dev/null",
+        "expected": "user",
+        "check": "contains",
+        "description": "Secret mounted at /tmp/secret2",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q08-networkpolicy-egress",
+    "title": "NetworkPolicy with Egress Control",
+    "domain": "networking",
+    "difficulty": "hard",
+    "points": 8,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "In namespace `backend`:\n\n1. Create a **NetworkPolicy** named `np-backend`\n2. Apply it to pods with label `app=backend`\n3. Allow **egress** traffic only to:\n   - Pods with label `app=db1` on port **1111** (TCP)\n   - Pods with label `app=db2` on port **2222** (TCP)\n4. All other egress traffic from backend pods should be **blocked**",
+    "hints": [
+      "Set policyTypes: [Egress]",
+      "Each egress rule item is OR'd; within each item, 'to' and 'ports' are AND'd",
+      "Creating any egress policy implicitly denies all other egress"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get networkpolicy np-backend -n backend -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "np-backend",
+        "check": "equals",
+        "description": "NetworkPolicy 'np-backend' exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get networkpolicy np-backend -n backend -o jsonpath='{.spec.podSelector.matchLabels.app}' 2>/dev/null",
+        "expected": "backend",
+        "check": "equals",
+        "description": "Selects pods with app=backend",
+        "points": 1
+      },
+      {
+        "command": "kubectl get networkpolicy np-backend -n backend -o jsonpath='{.spec.policyTypes}' 2>/dev/null",
+        "expected": "Egress",
+        "check": "contains",
+        "description": "Policy type includes Egress",
+        "points": 2
+      },
+      {
+        "command": "kubectl get networkpolicy np-backend -n backend -o json 2>/dev/null | grep -c '1111\\|2222'",
+        "expected": "1",
+        "check": "greater-than",
+        "description": "Egress rules include ports 1111 and 2222",
+        "points": 2
+      },
+      {
+        "command": "kubectl get networkpolicy np-backend -n backend -o json 2>/dev/null | grep -c 'db1\\|db2'",
+        "expected": "1",
+        "check": "greater-than",
+        "description": "Egress rules target db1 and db2 pods",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q09-expose-service-nodeport",
+    "title": "Expose Pod via NodePort Service",
+    "domain": "networking",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a Pod named `web-app` in namespace `web` with image `nginx:1.25` and label `app=web`\n2. Create a **NodePort** Service named `web-svc` in namespace `web` that:\n   - Selects pods with label `app=web`\n   - Exposes port **80**\n   - Target port **80**",
+    "hints": [
+      "kubectl expose pod web-app --name=web-svc --port=80 --type=NodePort",
+      "Or create YAML with type: NodePort",
+      "NodePort range is 30000-32767"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod web-app -n web -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "web-app",
+        "check": "equals",
+        "description": "Pod 'web-app' exists in web namespace",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod web-app -n web -o jsonpath='{.metadata.labels.app}' 2>/dev/null",
+        "expected": "web",
+        "check": "equals",
+        "description": "Pod has label app=web",
+        "points": 1
+      },
+      {
+        "command": "kubectl get svc web-svc -n web -o jsonpath='{.spec.type}' 2>/dev/null",
+        "expected": "NodePort",
+        "check": "equals",
+        "description": "Service type is NodePort",
+        "points": 2
+      },
+      {
+        "command": "kubectl get svc web-svc -n web -o jsonpath='{.spec.ports[0].port}' 2>/dev/null",
+        "expected": "80",
+        "check": "equals",
+        "description": "Service port is 80",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q10-deployment-rollout",
+    "title": "Deployment Rolling Update and Rollback",
+    "domain": "workloads",
+    "difficulty": "easy",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a **Deployment** named `nginx-deploy` in namespace `default` with image `nginx:1.23` and **3 replicas**\n2. Perform a **rolling update** to change the image to `nginx:1.25`\n3. Verify the rollout succeeds\n4. Then **rollback** to the previous version (`nginx:1.23`)\n\nThe deployment should end with image `nginx:1.23` after the rollback.",
+    "hints": [
+      "kubectl create deployment nginx-deploy --image=nginx:1.23 --replicas=3",
+      "kubectl set image deployment nginx-deploy nginx=nginx:1.25",
+      "kubectl rollout undo deployment nginx-deploy"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get deployment nginx-deploy -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "nginx-deploy",
+        "check": "equals",
+        "description": "Deployment 'nginx-deploy' exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment nginx-deploy -o jsonpath='{.spec.replicas}' 2>/dev/null",
+        "expected": "3",
+        "check": "equals",
+        "description": "Deployment has 3 replicas",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment nginx-deploy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null",
+        "expected": "nginx:1.23",
+        "check": "equals",
+        "description": "Image is nginx:1.23 (rolled back)",
+        "points": 2
+      },
+      {
+        "command": "kubectl rollout history deployment nginx-deploy 2>/dev/null | wc -l",
+        "expected": "3",
+        "check": "greater-than",
+        "description": "Rollout history shows multiple revisions",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q11-configmap-usage",
+    "title": "ConfigMap: Create and Use in Pod",
+    "domain": "workloads",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a **ConfigMap** named `app-config` in namespace `production` with:\n   - `APP_MODE=prod`\n   - `LOG_LEVEL=info`\n2. Create a Pod named `config-pod` in `production` with image `nginx:1.25`\n3. Inject both values as environment variables using `configMapKeyRef`",
+    "hints": [
+      "kubectl create configmap app-config --from-literal=APP_MODE=prod --from-literal=LOG_LEVEL=info",
+      "Use envFrom or individual env entries with configMapKeyRef"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get configmap app-config -n production -o jsonpath='{.data.APP_MODE}' 2>/dev/null",
+        "expected": "prod",
+        "check": "equals",
+        "description": "ConfigMap APP_MODE=prod",
+        "points": 1
+      },
+      {
+        "command": "kubectl get configmap app-config -n production -o jsonpath='{.data.LOG_LEVEL}' 2>/dev/null",
+        "expected": "info",
+        "check": "equals",
+        "description": "ConfigMap LOG_LEVEL=info",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod config-pod -n production -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "config-pod",
+        "check": "equals",
+        "description": "Pod config-pod exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl exec config-pod -n production -- env 2>/dev/null | grep APP_MODE",
+        "expected": "prod",
+        "check": "contains",
+        "description": "APP_MODE env var injected",
+        "points": 1
+      },
+      {
+        "command": "kubectl exec config-pod -n production -- env 2>/dev/null | grep LOG_LEVEL",
+        "expected": "info",
+        "check": "contains",
+        "description": "LOG_LEVEL env var injected",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q12-hpa-autoscaling",
+    "title": "Horizontal Pod Autoscaler",
+    "domain": "workloads",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a Deployment named `hpa-deploy` in `default` with image `nginx:1.25`, 1 replica, and resource requests of `cpu: 50m`\n2. Create an **HPA** for `hpa-deploy` with:\n   - Min replicas: **1**\n   - Max replicas: **5**\n   - Target CPU utilization: **50%**",
+    "hints": [
+      "kubectl autoscale deployment hpa-deploy --cpu-percent=50 --min=1 --max=5",
+      "Deployment must have CPU requests set for HPA to work",
+      "metrics-server must be running"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get deployment hpa-deploy -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "hpa-deploy",
+        "check": "equals",
+        "description": "Deployment hpa-deploy exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get deployment hpa-deploy -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}' 2>/dev/null",
+        "expected": "50m",
+        "check": "equals",
+        "description": "CPU request is 50m",
+        "points": 1
+      },
+      {
+        "command": "kubectl get hpa hpa-deploy -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "hpa-deploy",
+        "check": "equals",
+        "description": "HPA exists",
+        "points": 2
+      },
+      {
+        "command": "kubectl get hpa hpa-deploy -o jsonpath='{.spec.maxReplicas}' 2>/dev/null",
+        "expected": "5",
+        "check": "equals",
+        "description": "Max replicas is 5",
+        "points": 1
+      },
+      {
+        "command": "kubectl get hpa hpa-deploy -o jsonpath='{.spec.minReplicas}' 2>/dev/null",
+        "expected": "1",
+        "check": "equals",
+        "description": "Min replicas is 1",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q13-dns-coredns",
+    "title": "Verify CoreDNS and Service DNS Resolution",
+    "domain": "networking",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a Pod named `dns-test` in `default` namespace with image `busybox:1.31.1` and command `sleep 3600`\n2. Create a **ClusterIP** Service named `dns-svc` in `default` exposing port 80\n3. From the `dns-test` pod, verify DNS resolution works by running:\n   `nslookup dns-svc.default.svc.cluster.local`",
+    "hints": [
+      "Create a simple nginx pod first, then expose it",
+      "Use kubectl exec to run nslookup from dns-test pod",
+      "CoreDNS resolves <svc>.<ns>.svc.cluster.local"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod dns-test -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "dns-test",
+        "check": "equals",
+        "description": "Pod dns-test exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get svc dns-svc -o jsonpath='{.spec.type}' 2>/dev/null",
+        "expected": "ClusterIP",
+        "check": "equals",
+        "description": "Service dns-svc is ClusterIP",
+        "points": 2
+      },
+      {
+        "command": "kubectl get svc dns-svc -o jsonpath='{.spec.ports[0].port}' 2>/dev/null",
+        "expected": "80",
+        "check": "equals",
+        "description": "Service port is 80",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod dns-test -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Running",
+        "check": "equals",
+        "description": "dns-test pod is Running",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q14-ingress-resource",
+    "title": "Create Ingress Resource",
+    "domain": "networking",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "In namespace `web`:\n\n1. Ensure a Service named `web-backend` exists (port 80). If not, create a Pod `web-backend` with image `nginx:1.25` and label `app=web-backend`, then expose it.\n2. Create an **Ingress** named `web-ingress` that routes:\n   - Host: `app.example.com`\n   - Path: `/` (pathType: `Prefix`)\n   - Backend: service `web-backend` on port **80**",
+    "hints": [
+      "Use networking.k8s.io/v1 API for Ingress",
+      "pathType can be Prefix or Exact",
+      "Backend service must match name and port"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get svc web-backend -n web -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "web-backend",
+        "check": "equals",
+        "description": "Service web-backend exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ingress web-ingress -n web -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "web-ingress",
+        "check": "equals",
+        "description": "Ingress web-ingress exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ingress web-ingress -n web -o jsonpath='{.spec.rules[0].host}' 2>/dev/null",
+        "expected": "app.example.com",
+        "check": "equals",
+        "description": "Host is app.example.com",
+        "points": 2
+      },
+      {
+        "command": "kubectl get ingress web-ingress -n web -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}' 2>/dev/null",
+        "expected": "web-backend",
+        "check": "equals",
+        "description": "Backend service is web-backend",
+        "points": 1
+      },
+      {
+        "command": "kubectl get ingress web-ingress -n web -o jsonpath='{.spec.rules[0].http.paths[0].pathType}' 2>/dev/null",
+        "expected": "Prefix",
+        "check": "equals",
+        "description": "pathType is Prefix",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q15-clusterrole-binding",
+    "title": "ClusterRole and ClusterRoleBinding",
+    "domain": "cluster-architecture",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a **ClusterRole** named `node-reader` that allows `get`, `list`, and `watch` on **nodes**\n2. Create a **ClusterRoleBinding** named `node-reader-binding` that binds the ClusterRole to ServiceAccount `monitoring-sa` in namespace `monitoring`\n3. Verify the ServiceAccount can list nodes",
+    "hints": [
+      "ClusterRole is cluster-scoped (no namespace)",
+      "ClusterRoleBinding binds cluster-wide",
+      "Use kubectl auth can-i to verify"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get clusterrole node-reader -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "node-reader",
+        "check": "equals",
+        "description": "ClusterRole node-reader exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get clusterrole node-reader -o jsonpath='{.rules[0].resources}' 2>/dev/null",
+        "expected": "nodes",
+        "check": "contains",
+        "description": "ClusterRole applies to nodes",
+        "points": 1
+      },
+      {
+        "command": "kubectl get clusterrolebinding node-reader-binding -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "node-reader-binding",
+        "check": "equals",
+        "description": "ClusterRoleBinding exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl auth can-i list nodes --as system:serviceaccount:monitoring:monitoring-sa 2>/dev/null",
+        "expected": "yes",
+        "check": "equals",
+        "description": "SA can list nodes",
+        "points": 2
+      },
+      {
+        "command": "kubectl auth can-i delete nodes --as system:serviceaccount:monitoring:monitoring-sa 2>/dev/null",
+        "expected": "no",
+        "check": "equals",
+        "description": "SA cannot delete nodes (least privilege)",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q16-node-drain",
+    "title": "Drain and Uncordon a Node",
+    "domain": "troubleshooting",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "A worker node needs maintenance.\n\n1. Identify a worker node (not the control-plane) using `kubectl get nodes`\n2. **Drain** the worker node (ignore DaemonSets)\n3. Verify the node shows `SchedulingDisabled`\n4. After 'maintenance', **uncordon** the node to allow scheduling again\n\nThe node should be in `Ready` state and schedulable at the end.",
+    "hints": [
+      "kubectl drain <node> --ignore-daemonsets --delete-emptydir-data",
+      "kubectl uncordon <node>",
+      "kubectl get nodes to verify status"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get nodes --no-headers 2>/dev/null | grep -v control-plane | grep -v master | head -1 | awk '{print $2}'",
+        "expected": "Ready",
+        "check": "equals",
+        "description": "Worker node is Ready",
+        "points": 3
+      },
+      {
+        "command": "kubectl get nodes --no-headers 2>/dev/null | grep -c 'SchedulingDisabled'",
+        "expected": "0",
+        "check": "equals",
+        "description": "No nodes are cordoned (uncordoned after maintenance)",
+        "points": 3
+      }
+    ]
+  },
+  {
+    "id": "q17-fix-broken-pod",
+    "title": "Troubleshoot and Fix a Broken Pod",
+    "domain": "troubleshooting",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "There is a broken Pod named `broken-web` in namespace `development`. It is failing because of a wrong image.\n\n1. Investigate why the Pod is not running using `kubectl describe` and `kubectl get events`\n2. Fix the Pod by updating the image to `nginx:1.25`\n3. Verify the Pod transitions to `Running` state",
+    "hints": [
+      "kubectl describe pod broken-web -n development to see events",
+      "The image tag is invalid, causing ImagePullBackOff",
+      "kubectl set image or kubectl edit to fix"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod broken-web -n development -o jsonpath='{.spec.containers[0].image}' 2>/dev/null",
+        "expected": "nginx:1.25",
+        "check": "equals",
+        "description": "Image updated to nginx:1.25",
+        "points": 3
+      },
+      {
+        "command": "kubectl get pod broken-web -n development -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Running",
+        "check": "equals",
+        "description": "Pod is now Running",
+        "points": 3
+      }
+    ]
+  },
+  {
+    "id": "q18-pod-logs",
+    "title": "Monitor Pod Logs and Resource Usage",
+    "domain": "troubleshooting",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a Pod named `log-generator` in `monitoring` namespace with image `busybox:1.31.1`\n   - Command: `sh -c 'while true; do echo \"$(date) - healthy\"; sleep 2; done'`\n2. Verify logs are being generated using `kubectl logs`\n3. Use `kubectl top nodes` to check cluster resource usage (requires metrics-server)",
+    "hints": [
+      "Use kubectl logs log-generator -n monitoring to see output",
+      "kubectl top nodes shows node CPU/memory usage",
+      "kubectl top pods shows pod resource usage"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod log-generator -n monitoring -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "log-generator",
+        "check": "equals",
+        "description": "Pod log-generator exists",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pod log-generator -n monitoring -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Running",
+        "check": "equals",
+        "description": "Pod is Running",
+        "points": 1
+      },
+      {
+        "command": "kubectl logs log-generator -n monitoring --tail=1 2>/dev/null",
+        "expected": "healthy",
+        "check": "contains",
+        "description": "Pod logs contain 'healthy'",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q19-pv-reclaim-accessmode",
+    "title": "PV with Reclaim Policy and Access Modes",
+    "domain": "storage",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create storage resources:\n\n1. **PersistentVolume** named `data-pv`:\n   - Capacity: `1Gi`\n   - Access mode: `ReadWriteOnce`\n   - Reclaim policy: `Retain`\n   - hostPath: `/mnt/data`\n\n2. **PersistentVolumeClaim** named `data-pvc` in `data` namespace:\n   - Request: `500Mi`\n   - Access mode: `ReadWriteOnce`\n\n3. Create a Pod named `data-pod` in `data` namespace with image `nginx` that mounts the PVC at `/data`",
+    "hints": [
+      "PV is cluster-scoped, PVC is namespace-scoped",
+      "PVC storage request must be <= PV capacity",
+      "Set persistentVolumeReclaimPolicy: Retain on the PV"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pv data-pv -o jsonpath='{.spec.capacity.storage}' 2>/dev/null",
+        "expected": "1Gi",
+        "check": "equals",
+        "description": "PV has 1Gi capacity",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pv data-pv -o jsonpath='{.spec.persistentVolumeReclaimPolicy}' 2>/dev/null",
+        "expected": "Retain",
+        "check": "equals",
+        "description": "Reclaim policy is Retain",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pvc data-pvc -n data -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Bound",
+        "check": "equals",
+        "description": "PVC is Bound",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pod data-pod -n data -o jsonpath='{.spec.containers[0].volumeMounts[0].mountPath}' 2>/dev/null",
+        "expected": "/data",
+        "check": "equals",
+        "description": "Volume mounted at /data",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q20-troubleshoot-svc",
+    "title": "Troubleshoot Service Connectivity",
+    "domain": "troubleshooting",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "1. Create a Pod named `web-server` in `default` with image `nginx:1.25` and label `app=webserver`\n2. Create a ClusterIP Service named `web-service` targeting pods with label `app=webserver` on port 80\n3. Create a tester Pod named `test-client` with image `busybox:1.31.1` and command `sleep 3600`\n4. Verify connectivity: from `test-client`, run `wget -qO- http://web-service` and confirm you get the nginx welcome page",
+    "hints": [
+      "kubectl exec test-client -- wget -qO- http://web-service",
+      "Service selector must match pod labels exactly",
+      "DNS resolves service name within same namespace"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod web-server -o jsonpath='{.metadata.labels.app}' 2>/dev/null",
+        "expected": "webserver",
+        "check": "equals",
+        "description": "Pod has label app=webserver",
+        "points": 1
+      },
+      {
+        "command": "kubectl get svc web-service -o jsonpath='{.spec.selector.app}' 2>/dev/null",
+        "expected": "webserver",
+        "check": "equals",
+        "description": "Service selector matches pod label",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pod test-client -o jsonpath='{.status.phase}' 2>/dev/null",
+        "expected": "Running",
+        "check": "equals",
+        "description": "test-client pod is Running",
+        "points": 1
+      },
+      {
+        "command": "kubectl exec test-client -- wget -qO- --timeout=5 http://web-service 2>/dev/null | head -1",
+        "expected": "DOCTYPE",
+        "check": "contains",
+        "description": "Connectivity works: nginx responds",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q21-helm-install",
+    "title": "Helm: Install and Manage Chart",
+    "domain": "cluster-architecture",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Using Helm (if available):\n\n1. Add the **bitnami** Helm repo: `https://charts.bitnami.com/bitnami`\n2. Install a release named `my-nginx` using the `bitnami/nginx` chart in namespace `web`\n3. Verify the Helm release is deployed\n\n**Note:** If Helm is not installed, create a Deployment named `my-nginx` in namespace `web` with image `nginx:1.25` and 2 replicas as an alternative.",
+    "hints": [
+      "helm repo add bitnami https://charts.bitnami.com/bitnami",
+      "helm install my-nginx bitnami/nginx -n web",
+      "helm list -n web to verify"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get deployment -n web -o name 2>/dev/null | head -1",
+        "expected": "deployment",
+        "check": "contains",
+        "description": "A deployment exists in web namespace",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pods -n web --no-headers 2>/dev/null | wc -l",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "Pods are running in web namespace",
+        "points": 2
+      },
+      {
+        "command": "kubectl get pods -n web --no-headers 2>/dev/null | grep -c Running",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "Pods are in Running state",
+        "points": 2
+      }
+    ]
+  },
+  {
+    "id": "q22-cronjob",
+    "title": "Create CronJob for Periodic Task",
+    "domain": "workloads",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a **CronJob** named `log-cleaner` in namespace `monitoring`:\n\n- Image: `busybox:1.31.1`\n- Schedule: every 5 minutes (`*/5 * * * *`)\n- Command: `echo 'Cleaning logs at' $(date)`\n- Retain last **3** successful jobs and **1** failed job",
+    "hints": [
+      "kubectl create cronjob log-cleaner --image=busybox:1.31.1 --schedule='*/5 * * * *'",
+      "Set successfulJobsHistoryLimit: 3 and failedJobsHistoryLimit: 1"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get cronjob log-cleaner -n monitoring -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "log-cleaner",
+        "check": "equals",
+        "description": "CronJob exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get cronjob log-cleaner -n monitoring -o jsonpath='{.spec.schedule}' 2>/dev/null",
+        "expected": "*/5 * * * *",
+        "check": "equals",
+        "description": "Schedule is every 5 minutes",
+        "points": 2
+      },
+      {
+        "command": "kubectl get cronjob log-cleaner -n monitoring -o jsonpath='{.spec.successfulJobsHistoryLimit}' 2>/dev/null",
+        "expected": "3",
+        "check": "equals",
+        "description": "Keeps 3 successful jobs",
+        "points": 1
+      },
+      {
+        "command": "kubectl get cronjob log-cleaner -n monitoring -o jsonpath='{.spec.failedJobsHistoryLimit}' 2>/dev/null",
+        "expected": "1",
+        "check": "equals",
+        "description": "Keeps 1 failed job",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q23-resource-limits",
+    "title": "Pod Resource Requests and Limits",
+    "domain": "cluster-architecture",
+    "difficulty": "easy",
+    "points": 5,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Create a Pod named `resource-pod` in namespace `default`:\n\n- Image: `nginx:1.25`\n- Container name: `web`\n- Resource **requests**: cpu `100m`, memory `128Mi`\n- Resource **limits**: cpu `500m`, memory `512Mi`",
+    "hints": [
+      "Set resources.requests and resources.limits in the container spec",
+      "Use kubectl run with --dry-run=client -o yaml then edit",
+      "Requests = guaranteed minimum, Limits = maximum allowed"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].name}' 2>/dev/null",
+        "expected": "web",
+        "check": "equals",
+        "description": "Container name is 'web'",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].resources.requests.cpu}' 2>/dev/null",
+        "expected": "100m",
+        "check": "equals",
+        "description": "CPU request is 100m",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].resources.requests.memory}' 2>/dev/null",
+        "expected": "128Mi",
+        "check": "equals",
+        "description": "Memory request is 128Mi",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].resources.limits.cpu}' 2>/dev/null",
+        "expected": "500m",
+        "check": "equals",
+        "description": "CPU limit is 500m",
+        "points": 1
+      },
+      {
+        "command": "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].resources.limits.memory}' 2>/dev/null",
+        "expected": "512Mi",
+        "check": "equals",
+        "description": "Memory limit is 512Mi",
+        "points": 1
+      }
+    ]
+  },
+  {
+    "id": "q24-troubleshoot-control-plane",
+    "title": "Troubleshoot Control Plane Components",
+    "domain": "troubleshooting",
+    "difficulty": "hard",
+    "points": 7,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "Investigate the control plane components:\n\n1. Check that all control plane pods are running in `kube-system` namespace (`etcd`, `kube-apiserver`, `kube-scheduler`, `kube-controller-manager`)\n2. Create a ConfigMap named `cp-status` in `default` namespace with:\n   - `etcd=running`\n   - `apiserver=running`\n   - `scheduler=running`\n   - `controller-manager=running`\n3. Use `kubectl top nodes` and save the output context by creating a ConfigMap named `node-resources` with key `status=checked`",
+    "hints": [
+      "kubectl get pods -n kube-system to list control plane components",
+      "Static pods have the node name as suffix",
+      "kubectl create configmap with --from-literal"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get configmap cp-status -o jsonpath='{.data.etcd}' 2>/dev/null",
+        "expected": "running",
+        "check": "equals",
+        "description": "ConfigMap reports etcd=running",
+        "points": 2
+      },
+      {
+        "command": "kubectl get configmap cp-status -o jsonpath='{.data.apiserver}' 2>/dev/null",
+        "expected": "running",
+        "check": "equals",
+        "description": "ConfigMap reports apiserver=running",
+        "points": 1
+      },
+      {
+        "command": "kubectl get configmap cp-status -o jsonpath='{.data.scheduler}' 2>/dev/null",
+        "expected": "running",
+        "check": "equals",
+        "description": "ConfigMap reports scheduler=running",
+        "points": 1
+      },
+      {
+        "command": "kubectl get configmap node-resources -o jsonpath='{.data.status}' 2>/dev/null",
+        "expected": "checked",
+        "check": "equals",
+        "description": "node-resources ConfigMap exists with status=checked",
+        "points": 3
+      }
+    ]
+  },
+  {
+    "id": "q25-network-policy-ingress",
+    "title": "NetworkPolicy: Restrict Ingress Traffic",
+    "domain": "networking",
+    "difficulty": "medium",
+    "points": 6,
+    "context": "Use context: kubectl config use-context cka-simulator",
+    "description": "In namespace `production`:\n\n1. Create a NetworkPolicy named `allow-frontend-only`\n2. Apply to pods with label `role=backend`\n3. Allow **ingress** traffic **only** from pods with label `role=frontend`\n4. All other ingress traffic to backend pods should be blocked",
+    "hints": [
+      "podSelector selects which pods the policy applies to",
+      "ingress.from.podSelector selects allowed source pods",
+      "Once any ingress policy is applied, all unlisted sources are denied"
+    ],
+    "validation": [
+      {
+        "command": "kubectl get networkpolicy allow-frontend-only -n production -o jsonpath='{.metadata.name}' 2>/dev/null",
+        "expected": "allow-frontend-only",
+        "check": "equals",
+        "description": "NetworkPolicy exists",
+        "points": 1
+      },
+      {
+        "command": "kubectl get networkpolicy allow-frontend-only -n production -o jsonpath='{.spec.podSelector.matchLabels.role}' 2>/dev/null",
+        "expected": "backend",
+        "check": "equals",
+        "description": "Applies to role=backend pods",
+        "points": 2
+      },
+      {
+        "command": "kubectl get networkpolicy allow-frontend-only -n production -o jsonpath='{.spec.policyTypes}' 2>/dev/null",
+        "expected": "Ingress",
+        "check": "contains",
+        "description": "Policy type is Ingress",
+        "points": 1
+      },
+      {
+        "command": "kubectl get networkpolicy allow-frontend-only -n production -o json 2>/dev/null | grep -c 'frontend'",
+        "expected": "0",
+        "check": "greater-than",
+        "description": "Allows traffic from frontend pods",
+        "points": 2
+      }
+    ]
+  }
+]
